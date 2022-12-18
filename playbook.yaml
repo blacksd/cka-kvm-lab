@@ -1,0 +1,87 @@
+---
+- name: Set prerequisites
+  hosts: all
+  become: true
+
+  tasks:
+  - name: Install dnf-plugins-core
+    ansible.builtin.yum:
+      name: dnf-plugins-core
+      state: latest
+  - name: Add containerd repo
+    ansible.builtin.get_url:
+      url: https://download.docker.com/linux/centos/docker-ce.repo
+      dest: /etc/yum.repos.d/docker-ce.repo
+  - name: Add Kube Repo
+    ansible.builtin.yum_repository:
+      name: kubernetes
+      description: Kubernetes Repo
+      file: kubernetes
+      baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+      gpgkey: https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+      exclude: 
+      - kubelet 
+      - kubeadm 
+      - kubectl
+      enabled: true
+  - name: Install containerd
+    ansible.builtin.yum:
+      name: containerd.io
+      state: latest
+  - name: Enable containerd
+    ansible.builtin.systemd:
+      name: containerd
+      state: started
+      enabled: yes
+  - name: Disable SELinux
+    ansible.posix.selinux:
+      state: disabled
+    notify: System Restart
+  - name: Install kube binaries
+    ansible.builtin.yum:
+      name: "{{ item }}"
+      disable_excludes: kubernetes
+      state: present
+    with_items:
+    - kubelet
+    - kubeadm
+    - kubectl
+  - name: Enable kubelet
+    ansible.builtin.systemd:
+      name: kubelet
+      state: started
+      enabled: yes
+  - name: Enable kernel modules
+    community.general.modprobe:
+      name: "{{ item }}"
+      state: present
+    with_items:
+    - overlay
+    - br_netfilter
+  - name: Enable sysctl stuff
+    ansible.posix.sysctl:
+      name: "{{ item }} "
+      value: '1'
+      sysctl_set: yes
+      state: present
+      reload: yes
+    with_items:
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+    - net.ipv4.ip_forward
+  - name: Fix containerd
+    ansible.builtin.lineinfile:
+      dest: /etc/containerd/config.toml 
+      line: disabled_plugins = [""]
+      regexp: '^disabled_plugins.*$'
+      state: present
+    notify: Restart containerd
+
+
+  handlers:
+    - name: System Restart
+      ansible.builtin.reboot:
+    - name: Restart containerd
+      ansible.builtin.service:
+        name: containerd
+        state: restarted

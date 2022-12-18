@@ -1,0 +1,21 @@
+- name: master01
+  distro: centos-9-stream
+  memory: 1024
+  root_disk_size: 10
+  vcpus: 1
+  root_password: 'root'
+  groups: ['masters', 'kubernetes']
+- name: worker01
+  distro: centos-9-stream
+  memory: 2048
+  root_disk_size: 10
+  vcpus: 2
+  root_password: 'root'
+  groups: ['workers', 'kubernetes']
+- name: worker02
+  distro: centos-9-stream
+  memory: 2048
+  root_disk_size: 10
+  vcpus: 2
+  root_password: 'root'
+  groups: ['workers', 'kubernetes']
