@@ -1,0 +1,22 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  VIRT_LIGHTNING_FILE: virt-lightning.yaml
+
+tasks:
+  default:
+    cmds:
+      - task -l
+    silent: true
+  
+  destroy:
+    desc: Destroy the whole bunch of machines
+    cmds:
+      - vl down
+  
+  create:
+    desc: Create the lab machines
+    cmds:
+    - vl up

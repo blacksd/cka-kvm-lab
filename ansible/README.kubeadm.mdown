@@ -1,0 +1,10 @@
+kubeadm config images pull
+kubeadm init --ignore-preflight-errors=NumCPU,Mem
+
+Static pods at /etc/kubernetes/manifests
+[kubelet-start] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+/etc/kubernetes/admin.conf
+
+
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.24.5/manifests/calico.yaml -O

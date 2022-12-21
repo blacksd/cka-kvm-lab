@@ -1,0 +1,42 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  INVENTORY_FILE: inventory.ini
+
+tasks:
+  default:
+    cmds:
+      - task -l
+    silent: true
+  
+  inventory-refresh:
+    desc: Refresh the Ansible inventory
+    cmds:
+      - vl ansible_inventory > {{ .INVENTORY_FILE }}
+  
+  playbook-init:
+    desc: Prepare the OS
+    deps:
+      - inventory-refresh
+    cmds:
+    - task: playbook
+      vars:
+        ANSIBLE_PLAYBOOK: playbook-init.yaml
+
+  playbook-kubeadm:
+    desc: Bootstrap Kubernetes with kubeadm
+    deps:
+      - inventory-refresh
+    cmds:
+    - task: playbook
+      vars:
+        ANSIBLE_PLAYBOOK: playbook-kubeadm.yaml
+
+  playbook:
+    preconditions:
+      - sh: "[ ! -z {{ .ANSIBLE_PLAYBOOK }} ]"
+        msg: "Please specify the ANSIBLE_PLAYBOOK var"
+    cmds:
+      - ansible-playbook --inventory {{ .INVENTORY_FILE }} {{ .ANSIBLE_PLAYBOOK }}

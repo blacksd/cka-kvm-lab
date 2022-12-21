@@ -1,0 +1,77 @@
+---
+- name: Run Kubeadm init on the master nodes
+  hosts: masters
+  become: true
+  tasks:
+  - name: Stat
+    ansible.builtin.stat:
+      dest: /etc/kubernetes/admin.conf
+    ignore_errors: true
+    register: init_completed
+  - name: Init everything
+    when: not init_completed.stat.exists
+    block:
+    - name: Create kubeadm dirs
+      ansible.builtin.file:
+        path: "/tmp/kubeadm-{{ item }}"
+        state: directory
+        mode: '0755'
+      with_items:
+      - patches
+      - configs
+
+    - name: Create kubeadm patchfile
+      ansible.builtin.blockinfile:
+        path: /tmp/kubeadm-patches/kube-apiserver0+json.yaml
+        create: true
+        block: |
+          - op: replace
+            path: /spec/containers/0/livenessProbe/initialDelaySeconds
+            value: 180
+          - op: replace
+            path: /spec/containers/0/livenessProbe/timeoutSeconds
+            value: 45
+    - name: Copy config
+      ansible.builtin.copy:
+        dest: /tmp/kubeadm-configs
+        src: ./resources/ClusterConfig.yml
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Kubeadm init
+      ansible.builtin.shell:
+        cmd: kubeadm init --ignore-preflight-errors=NumCPU,Mem  --config /tmp/kubeadm-configs/ClusterConfig.yml
+
+    - name: Create kube
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'HOME') }}/.kube"
+        state: directory
+        mode: '0755'
+
+    - name: Copy admin
+      ansible.builtin.copy:
+        dest: "{{ lookup('env','HOME') }}/.kube/config"
+        remote_src: true
+        src: /etc/kubernetes/admin.conf
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+
+  - name: Create a token for join
+    ansible.builtin.shell:
+      cmd: kubeadm token create --print-join-command --description "Created by Ansible"
+    register: token_join_command
+
+  - ansible.builtin.debug:
+      var: token_join_command
+      verbosity: 3
+
+- name: Perform the Kubeadm Join with the previous token 
+  hosts: workers
+  become: true
+
+  tasks:
+  - name: Perform the Kubeadm Join
+    ansible.builtin.shell:
+      cmd: "{{ hostvars[groups['masters'][0]].token_join_command.stdout }}"

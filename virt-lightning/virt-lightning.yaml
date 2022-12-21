@@ -1,8 +1,8 @@
 - name: master01
   distro: centos-9-stream
-  memory: 1024
+  memory: 4096
   root_disk_size: 10
-  vcpus: 1
+  vcpus: 3
   root_password: 'root'
   groups: ['masters', 'kubernetes']
 - name: worker01

@@ -1,0 +1,21 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  GREETING: Hello, World!
+
+includes:
+  ansible: 
+    dir: ./ansible
+    taskfile: ./ansible/Taskfile.yaml
+  virt-lightning:
+    dir: ./virt-lightning
+    taskfile: ./virt-lightning/Taskfile.yaml
+
+tasks:
+  default:
+    cmds:
+      - /usr/bin/go-task -l
+    silent: true
+  

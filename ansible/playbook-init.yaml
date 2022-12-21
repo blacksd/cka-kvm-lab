@@ -4,10 +4,6 @@
   become: true
 
   tasks:
-  - name: Install dnf-plugins-core
-    ansible.builtin.yum:
-      name: dnf-plugins-core
-      state: latest
   - name: Add containerd repo
     ansible.builtin.get_url:
       url: https://download.docker.com/linux/centos/docker-ce.repo
@@ -33,6 +29,26 @@
       name: containerd
       state: started
       enabled: yes
+  - name: Check nerdctl
+    ansible.builtin.stat:
+      dest: /usr/local/bin/nerdctl
+    ignore_errors: true
+    register: stat_nerdctl
+
+  - name: Install nerdctl
+    block:
+      - name: Download nerdctl
+        get_url:
+          url: https://github.com/containerd/nerdctl/releases/download/v1.1.0/nerdctl-1.1.0-linux-amd64.tar.gz
+          dest: /tmp/
+        register: bin_files
+      - name: Unpack nerdctl
+        ansible.builtin.unarchive:
+          src: "{{ bin_files.dest }}"
+          dest: /usr/local/bin
+          copy: no
+    when: not stat_nerdctl.stat.exists
+
   - name: Disable SELinux
     ansible.posix.selinux:
       state: disabled
@@ -51,6 +67,14 @@
       name: kubelet
       state: started
       enabled: yes
+  - name: Persist kernel modules
+    ansible.builtin.lineinfile:
+      dest: /etc/modules-load.d/k8s.conf
+      create: true
+      line: "{{ item }}"
+    with_items:
+    - overlay
+    - br_netfilter
   - name: Enable kernel modules
     community.general.modprobe:
       name: "{{ item }}"
@@ -62,13 +86,13 @@
     ansible.posix.sysctl:
       name: "{{ item }} "
       value: '1'
-      sysctl_set: yes
       state: present
       reload: yes
     with_items:
     - net.bridge.bridge-nf-call-iptables
     - net.bridge.bridge-nf-call-ip6tables
     - net.ipv4.ip_forward
+    notify: System Restart
   - name: Fix containerd
     ansible.builtin.lineinfile:
       dest: /etc/containerd/config.toml 
@@ -79,9 +103,9 @@
 
 
   handlers:
-    - name: System Restart
-      ansible.builtin.reboot:
     - name: Restart containerd
       ansible.builtin.service:
         name: containerd
         state: restarted
+    - name: System Restart
+      ansible.builtin.reboot:
