@@ -1,10 +1,31 @@
-kubeadm config images pull
-kubeadm init --ignore-preflight-errors=NumCPU,Mem
+# Kubeadm
 
-Static pods at /etc/kubernetes/manifests
-[kubelet-start] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
-[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
-/etc/kubernetes/admin.conf
+Took me some time to figure out but here goes a couple GOTCHAs:
 
+* Static pods are located at `/etc/kubernetes/manifests`
+* Kubelet config is at `/var/lib/kubelet/config.yaml`, the systemd unit file reads the flag in `/var/lib/kubelet/kubeadm-flags.env`
+* At `/etc/kubernetes/admin.conf` there's the adminstrative `KUBECONFIG`. 
 
-curl https://raw.githubusercontent.com/projectcalico/calico/v3.24.5/manifests/calico.yaml -O
+You **must** tell that you're using systemd to:
+- The Kubelet, by using a `--patches` or its `InitConfiguration` equivalent (I prefer the latter)
+- Containerd, setting `SystemdCgroup = true` in the relevant section of the `toml` config
+
+- `crictl inspect` will show you pod specs too
+- `crictl logs` will be useful if the apiserver or etcd are unreachable
+
+TODO: add these:
+
+ETCD_VER=v3.3.8
+
+# choose either URL
+GOOGLE_URL=https://storage.googleapis.com/etcd
+GITHUB_URL=https://github.com/coreos/etcd/releases/download
+DOWNLOAD_URL=${GOOGLE_URL}
+
+rm -f /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz
+rm -rf /tmp/test-etcd && mkdir -p /tmp/test-etcd
+
+curl -L ${DOWNLOAD_URL}/${ETCD_VER}/etcd-${ETCD_VER}-linux-amd64.tar.gz -o /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz
+tar xzvf /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz -C /tmp/test-etcd --strip-components=1
+
+sudo mkdir -p /usr/local/bin/ && sudo cp /tmp/test-etcd/etcd* /usr/local/bin/

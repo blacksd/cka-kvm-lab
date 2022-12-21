@@ -2,9 +2,6 @@
 
 version: '3'
 
-vars:
-  GREETING: Hello, World!
-
 includes:
   ansible: 
     dir: ./ansible
@@ -20,7 +17,16 @@ tasks:
     silent: true
   
   redo:
+    desc: "Tear down and rebuild all lab"
     cmds:
     - task: virt-lightning:destroy
     - task: virt-lightning:create
     - task: ansible:playbook-init
+
+  cluster-info:
+    desc: Test access to the API Server
+    env:
+      KUBECONFIG:
+        sh: echo $PWD/ansible/resources/.kube/config
+    cmds:
+    - kubectl cluster-info

@@ -14,6 +14,9 @@
     ansible.builtin.get_url:
       url: https://download.docker.com/linux/centos/docker-ce.repo
       dest: /etc/yum.repos.d/docker-ce.repo
+      owner: root
+      group: root
+      mode: '0644'
   - name: Add Kube Repo
     ansible.builtin.yum_repository:
       name: kubernetes
@@ -21,42 +24,62 @@
       file: kubernetes
       baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
       gpgkey: https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
-      exclude: 
-      - kubelet 
-      - kubeadm 
-      - kubectl
+      exclude:
+        - kubelet
+        - kubeadm
+        - kubectl
       enabled: true
   - name: Install containerd
     ansible.builtin.yum:
       name: containerd.io
-      state: latest
-  - name: Enable containerd
-    ansible.builtin.systemd:
-      name: containerd
-      state: started
-      enabled: yes
-  - name: Check nerdctl
-    ansible.builtin.stat:
-      dest: /usr/local/bin/nerdctl
-    ignore_errors: true
-    register: stat_nerdctl
+      state: present
+    register: containerd_installed
 
-  - name: Install nerdctl
+  - name: Configure containerd
+    when: containerd_installed.changed
     block:
-      - name: Download nerdctl
-        get_url:
-          url: https://github.com/containerd/nerdctl/releases/download/v1.1.0/nerdctl-1.1.0-linux-amd64.tar.gz
-          dest: /tmp/
-        register: bin_files
-      - name: Unpack nerdctl
-        ansible.builtin.unarchive:
-          src: "{{ bin_files.dest }}"
-          dest: "{{ item }}"
-          copy: no
+      - name: Enforce containerd standard config
+        ansible.builtin.shell:
+          cmd: containerd config default > /etc/containerd/config.toml
+
+      - name: Set cgroup systemd support to containerd
+        ansible.builtin.lineinfile:
+          dest: /etc/containerd/config.toml
+          backrefs: true
+          regexp: '^(\s*)[#]?{{ item.search }}.*'
+          line: '\1{{ item.replace }}'
         with_items:
-        - /usr/local/bin
-        - /usr/sbin
-    when: not stat_nerdctl.stat.exists
+          - search: SystemdCgroup = false
+            replace: SystemdCgroup = true
+
+      - name: Enable containerd
+        ansible.builtin.systemd:
+          name: containerd
+          state: started
+          enabled: true
+
+      - name: Check nerdctl
+        ansible.builtin.stat:
+          dest: /usr/local/bin/nerdctl
+        ignore_errors: true
+        register: stat_nerdctl
+
+      - name: Install nerdctl
+        when: not stat_nerdctl.stat.exists
+        block:
+          - name: Download nerdctl
+            ansible.builtin.get_url:
+              url: https://github.com/containerd/nerdctl/releases/download/v1.1.0/nerdctl-1.1.0-linux-amd64.tar.gz
+              dest: /tmp
+            register: bin_files
+          - name: Unpack nerdctl
+            ansible.builtin.unarchive:
+              src: "{{ bin_files.dest }}"
+              dest: "{{ item }}"
+              copy: false
+            with_items:
+              - /usr/local/bin
+              - /usr/sbin
 
   - name: Disable SELinux
     ansible.posix.selinux:
@@ -68,48 +91,42 @@
       disable_excludes: kubernetes
       state: present
     with_items:
-    - kubelet
-    - kubeadm
-    - kubectl
+      - kubelet
+      - kubeadm
+      - kubectl
   - name: Enable kubelet
     ansible.builtin.systemd:
       name: kubelet
       state: started
-      enabled: yes
+      enabled: true
   - name: Persist kernel modules
     ansible.builtin.lineinfile:
       dest: /etc/modules-load.d/k8s.conf
       create: true
       line: "{{ item }}"
+      owner: "root"
+      mode: '0644'
     with_items:
-    - overlay
-    - br_netfilter
+      - overlay
+      - br_netfilter
   - name: Enable kernel modules
     community.general.modprobe:
       name: "{{ item }}"
       state: present
     with_items:
-    - overlay
-    - br_netfilter
+      - overlay
+      - br_netfilter
   - name: Enable sysctl stuff
     ansible.posix.sysctl:
       name: "{{ item }} "
       value: '1'
       state: present
-      reload: yes
+      reload: true
     with_items:
-    - net.bridge.bridge-nf-call-iptables
-    - net.bridge.bridge-nf-call-ip6tables
-    - net.ipv4.ip_forward
+      - net.bridge.bridge-nf-call-iptables
+      - net.bridge.bridge-nf-call-ip6tables
+      - net.ipv4.ip_forward
     notify: System Restart
-  - name: Fix containerd
-    ansible.builtin.lineinfile:
-      dest: /etc/containerd/config.toml 
-      line: disabled_plugins = [""]
-      regexp: '^disabled_plugins.*$'
-      state: present
-    notify: Restart containerd
-
 
   handlers:
     - name: Restart containerd

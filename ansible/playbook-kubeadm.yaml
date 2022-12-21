@@ -3,83 +3,140 @@
   hosts: masters
   become: true
   vars:
-    skipped: "no"
+    just_prepare_stuff: "no"
   tasks:
-  - name: Stat
-    ansible.builtin.stat:
-      dest: /etc/kubernetes/admin.conf
-    ignore_errors: true
-    register: init_completed
-  - name: Init everything
-    when: not init_completed.stat.exists
-    block:
-    - name: Create kubeadm dirs
-      ansible.builtin.file:
-        path: "/tmp/kubeadm-{{ item }}"
-        state: directory
-        mode: '0755'
-      with_items:
-      - patches
-      - configs
+    - name: Stat
+      ansible.builtin.stat:
+        dest: /etc/kubernetes/admin.conf
+      ignore_errors: true
+      register: init_completed
 
-    - name: Copy kubeadm patches and ClusterConfig
-      ansible.builtin.copy:
-        src: "{{ item.src  }}"
-        dest: "{{ item.dest  }}"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0644'
-      with_items:
-        - src: ./resources/ClusterConfig.yml
-          dest: /tmp/kubeadm-configs
-        - src: ./resources/kube-apiserver0+json.yaml
-          dest: /tmp/kubeadm-patches
-        - src: ./resources/etcd0+json.yaml
-          dest: /tmp/kubeadm-patches
+    - name: Init everything
+      when: not init_completed.stat.exists
+      block:
+        - name: Create kubeadm dirs
+          ansible.builtin.file:
+            path: "/tmp/kubeadm-{{ item }}"
+            state: directory
+            mode: '0755'
+          # TODO: make these variables
+          with_items:
+            - patches
+            - config
+        - name: Copy kubeadm patches and cluster config
+          ansible.builtin.copy:
+            src: "{{ item.src }}"
+            dest: "{{ item.dest }}"
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: '0644'
+          # TODO: config.yaml should be a jinja2 template
+          with_items:
+            - src: ./resources/config/config.yml
+              dest: /tmp/kubeadm-config
+            - src: ./resources/patches/kube-apiserver0+json.yaml
+              dest: /tmp/kubeadm-patches
+            - src: ./resources/patches/etcd0+json.yaml
+              dest: /tmp/kubeadm-patches
 
-    - name: Kubeadm init
-      when: not skipped | bool
-      ansible.builtin.shell:
-        cmd: kubeadm init --ignore-preflight-errors=NumCPU,Mem  --config /tmp/kubeadm-configs/ClusterConfig.yml
+        - name: Kubeadm pull images
+          when: not just_prepare_stuff | bool
+          ansible.builtin.command:
+            cmd: kubeadm config images pull
 
-    - name: Stop here
-      ansible.builtin.meta: end_host
-      when: skipped | bool
+        - name: Kubeadm init
+          when: not just_prepare_stuff | bool
+          ansible.builtin.command:
+            cmd: kubeadm init --upload-certs --config /tmp/kubeadm-config/config.yml
 
-    - name: Create kube
-      ansible.builtin.file:
-        path: "{{ lookup('env', 'HOME') }}/.kube"
-        state: directory
-        mode: '0755'
+        - name: Stop here
+          ansible.builtin.meta: end_host
+          when: just_prepare_stuff | bool
 
-    - name: Copy admin
-      ansible.builtin.copy:
-        dest: "{{ lookup('env','HOME') }}/.kube/config"
-        remote_src: true
+        - name: Create kube
+          ansible.builtin.file:
+            path: "{{ lookup('env', 'HOME') }}/.kube"
+            state: directory
+            mode: '0755'
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+
+        - name: Copy admin config
+          ansible.builtin.copy:
+            dest: "{{ lookup('env', 'HOME') }}/.kube/config"
+            remote_src: true
+            src: /etc/kubernetes/admin.conf
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: '0600'
+
+    - name: Save the Admin Kubeconfig locally
+      ansible.builtin.fetch:
         src: /etc/kubernetes/admin.conf
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0600'
+        dest: ./resources/.kube/config
+        flat: true
 
-  - name: Create a token for join
-    ansible.builtin.shell:
-      cmd: kubeadm token create --print-join-command --description "Created by Ansible"
-    register: token_join_command
+    - name: Create a token for join
+      changed_when: token_join_command.rc == 0
+      ansible.builtin.command:
+        cmd: kubeadm token create --print-join-command --description "Created by Ansible"
+      register: token_join_command
 
-  - ansible.builtin.debug:
-      var: token_join_command
-      verbosity: 3
+    - name: Show the join token
+      ansible.builtin.debug:
+        var: token_join_command
+        verbosity: 3
 
-- name: Perform the Kubeadm Join with the previous token 
+    - name: Wait for API Server
+      ansible.builtin.wait_for:
+        port: 6443
+        delay: 5
+
+    - name: Check for Calico presence
+      become: false
+      ignore_errors: true
+      changed_when: check_calico.rc > 0
+      ansible.builtin.command:
+        cmd: kubectl --namespace kube-system get daemonset calico-node
+      register: check_calico
+
+    - name: Install Calico
+      when: check_calico.rc > 0
+      block:
+        - name: Download the Calico manifests
+          ansible.builtin.get_url:
+            url: https://raw.githubusercontent.com/projectcalico/calico/v3.24.5/manifests/calico.yaml
+            dest: /tmp
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: '0644'
+
+        - name: Install Calico
+          become: false
+          ansible.builtin.command:
+            cmd: kubectl apply -f /tmp/calico.yaml
+          register: kubectl_apply
+
+- name: Perform the Kubeadm Join with the previous token
   hosts: workers
   become: true
   vars:
-    skipped: "no"
+    just_prepare_stuff: "no"
 
   tasks:
-  - name: Stop here
-    ansible.builtin.meta: end_host
-    when: skipped | bool
-  - name: Perform the Kubeadm Join
-    ansible.builtin.shell:
-      cmd: "{{ hostvars[groups['masters'][0]].token_join_command.stdout }}"
+    - name: Stop here
+      ansible.builtin.meta: end_host
+      when: just_prepare_stuff | bool
+
+    - name: Check if port 10250 is listening
+      ansible.builtin.wait_for:
+        port: 10250
+        timeout: 5
+        msg: "Timeout waiting for 10250 to respond"
+      register: kubelet_port_check
+      ignore_errors: true
+
+    - name: Perform the Kubeadm Join
+      when: kubelet_port_check.failed
+      ansible.builtin.command:
+        cmd: "{{ hostvars[groups['masters'][0]].token_join_command.stdout }}"
