@@ -14,9 +14,9 @@ tasks:
   destroy:
     desc: Destroy the whole bunch of machines
     cmds:
-      - vl down
+      - vl down {{ .CLI_ARGS }}
   
   create:
     desc: Create the lab machines
     cmds:
-    - vl up
+    - vl up {{ .CLI_ARGS }}

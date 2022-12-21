@@ -39,4 +39,4 @@ tasks:
       - sh: "[ ! -z {{ .ANSIBLE_PLAYBOOK }} ]"
         msg: "Please specify the ANSIBLE_PLAYBOOK var"
     cmds:
-      - ansible-playbook --inventory {{ .INVENTORY_FILE }} {{ .ANSIBLE_PLAYBOOK }}
+      - ansible-playbook --inventory {{ .INVENTORY_FILE }} {{ .ANSIBLE_PLAYBOOK }} {{ .CLI_ARGS }}

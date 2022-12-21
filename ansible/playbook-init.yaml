@@ -4,6 +4,12 @@
   become: true
 
   tasks:
+  - name: Install common utils
+    ansible.builtin.dnf:
+      name:
+        - nmap-ncat
+        - bash-completion
+
   - name: Add containerd repo
     ansible.builtin.get_url:
       url: https://download.docker.com/linux/centos/docker-ce.repo
@@ -45,8 +51,11 @@
       - name: Unpack nerdctl
         ansible.builtin.unarchive:
           src: "{{ bin_files.dest }}"
-          dest: /usr/local/bin
+          dest: "{{ item }}"
           copy: no
+        with_items:
+        - /usr/local/bin
+        - /usr/sbin
     when: not stat_nerdctl.stat.exists
 
   - name: Disable SELinux

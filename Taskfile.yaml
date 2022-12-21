@@ -19,3 +19,8 @@ tasks:
       - /usr/bin/go-task -l
     silent: true
   
+  redo:
+    cmds:
+    - task: virt-lightning:destroy
+    - task: virt-lightning:create
+    - task: ansible:playbook-init
