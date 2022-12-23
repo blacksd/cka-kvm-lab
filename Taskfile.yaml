@@ -13,7 +13,7 @@ includes:
 tasks:
   default:
     cmds:
-      - /usr/bin/go-task -l
+      - task -l
     silent: true
   
   redo:

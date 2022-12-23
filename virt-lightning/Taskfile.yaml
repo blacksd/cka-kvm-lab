@@ -20,3 +20,11 @@ tasks:
     desc: Create the lab machines
     cmds:
     - vl up {{ .CLI_ARGS }}
+
+  start:
+    desc: Start all VMs
+    cmds:
+    - |
+      for vm in $(awk '/name/ { print $3 }' {{ .VIRT_LIGHTNING_FILE }}); do
+        sudo virsh start ${vm}
+      done
