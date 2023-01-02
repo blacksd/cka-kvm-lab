@@ -1,132 +1,158 @@
 ---
-- name: Set prerequisites
-  hosts: all
+- name: Instll etcdctl on masters
+  hosts: masters
   become: true
+  vars:
+    etcd_version: v3.3.8
+    etcd_google_url: https://storage.googleapis.com/etcd
 
   tasks:
-  - name: Install common utils
-    ansible.builtin.dnf:
-      name:
-        - nmap-ncat
-        - bash-completion
+    - name: Check etcdctl
+      ansible.builtin.stat:
+        dest: /usr/local/bin/etcdctl
+      ignore_errors: true
+      register: stat_etcdctl
 
-  - name: Add containerd repo
-    ansible.builtin.get_url:
-      url: https://download.docker.com/linux/centos/docker-ce.repo
-      dest: /etc/yum.repos.d/docker-ce.repo
-      owner: root
-      group: root
-      mode: '0644'
-  - name: Add Kube Repo
-    ansible.builtin.yum_repository:
-      name: kubernetes
-      description: Kubernetes Repo
-      file: kubernetes
-      baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
-      gpgkey: https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
-      exclude:
+    - name: Install etcdctl
+      when: not stat_etcdctl.stat.exists
+      block:
+        - name: Download and unpack etcdctl
+          ansible.builtin.unarchive:
+            src: "{{ etcd_google_url }}/{{ etcd_version }}/etcd-{{ etcd_version }}-linux-amd64.tar.gz"
+            remote_src: true
+            dest: "{{ item }}"
+            extra_opts: [--strip-components=1]
+          with_items:
+            - /usr/local/bin
+            - /usr/sbin
+
+- name: Install common stuff on all nodes
+  hosts: all
+  become: true
+  vars:
+    nerdctl_version: "1.1.0"
+    kubernetes_version: "1.26.0"
+
+  tasks:
+    - name: Install common utils
+      ansible.builtin.dnf:
+        name:
+          - nmap-ncat
+          - bash-completion
+
+    - name: Add containerd repo
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+        owner: root
+        group: root
+        mode: "0644"
+    - name: Add Kube Repo
+      ansible.builtin.yum_repository:
+        name: kubernetes
+        description: Kubernetes Repo
+        file: kubernetes
+        baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+        gpgkey: https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+        exclude:
+          - kubelet
+          - kubeadm
+          - kubectl
+        enabled: true
+    - name: Install containerd
+      ansible.builtin.yum:
+        name: containerd.io
+        state: present
+      register: containerd_installed
+
+    - name: Configure containerd # noqa no-handler
+      when: containerd_installed.changed
+      block:
+        - name: Enforce containerd standard config
+          changed_when: false
+          ansible.builtin.shell:
+            cmd: containerd config default > /etc/containerd/config.toml
+
+        - name: Set cgroup systemd support to containerd
+          ansible.builtin.lineinfile:
+            dest: /etc/containerd/config.toml
+            backrefs: true
+            regexp: '^(\s*)[#]?{{ item.search }}.*'
+            line: '\1{{ item.replace }}'
+          with_items:
+            - search: SystemdCgroup = false
+              replace: SystemdCgroup = true
+
+        - name: Enable containerd
+          ansible.builtin.systemd:
+            name: containerd
+            state: started
+            enabled: true
+
+    - name: Check nerdctl
+      ansible.builtin.stat:
+        dest: /usr/local/bin/nerdctl
+      ignore_errors: true
+      register: stat_nerdctl
+
+    - name: Install nerdctl
+      when: not stat_nerdctl.stat.exists
+      block:
+        - name: Download and unpack nerdctl
+          ansible.builtin.unarchive:
+            remote_src: true
+            src: "https://github.com/containerd/nerdctl/releases/download/v{{ nerdctl_version }}/nerdctl-{{ nerdctl_version }}-linux-amd64.tar.gz"
+            dest: "{{ item }}"
+          with_items:
+            - /usr/local/bin
+            - /usr/sbin
+
+    - name: Disable SELinux
+      ansible.posix.selinux:
+        state: disabled
+      notify: System Restart
+    - name: Install kube binaries
+      ansible.builtin.dnf:
+        name: "{{ item }} = {{ kubernetes_version }}"
+        disable_excludes: kubernetes
+        state: present
+      with_items:
         - kubelet
         - kubeadm
         - kubectl
-      enabled: true
-  - name: Install containerd
-    ansible.builtin.yum:
-      name: containerd.io
-      state: present
-    register: containerd_installed
-
-  - name: Configure containerd
-    when: containerd_installed.changed
-    block:
-      - name: Enforce containerd standard config
-        ansible.builtin.shell:
-          cmd: containerd config default > /etc/containerd/config.toml
-
-      - name: Set cgroup systemd support to containerd
-        ansible.builtin.lineinfile:
-          dest: /etc/containerd/config.toml
-          backrefs: true
-          regexp: '^(\s*)[#]?{{ item.search }}.*'
-          line: '\1{{ item.replace }}'
-        with_items:
-          - search: SystemdCgroup = false
-            replace: SystemdCgroup = true
-
-      - name: Enable containerd
-        ansible.builtin.systemd:
-          name: containerd
-          state: started
-          enabled: true
-
-      - name: Check nerdctl
-        ansible.builtin.stat:
-          dest: /usr/local/bin/nerdctl
-        ignore_errors: true
-        register: stat_nerdctl
-
-      - name: Install nerdctl
-        when: not stat_nerdctl.stat.exists
-        block:
-          - name: Download nerdctl
-            ansible.builtin.get_url:
-              url: https://github.com/containerd/nerdctl/releases/download/v1.1.0/nerdctl-1.1.0-linux-amd64.tar.gz
-              dest: /tmp
-            register: bin_files
-          - name: Unpack nerdctl
-            ansible.builtin.unarchive:
-              src: "{{ bin_files.dest }}"
-              dest: "{{ item }}"
-              copy: false
-            with_items:
-              - /usr/local/bin
-              - /usr/sbin
-
-  - name: Disable SELinux
-    ansible.posix.selinux:
-      state: disabled
-    notify: System Restart
-  - name: Install kube binaries
-    ansible.builtin.yum:
-      name: "{{ item }}"
-      disable_excludes: kubernetes
-      state: present
-    with_items:
-      - kubelet
-      - kubeadm
-      - kubectl
-  - name: Enable kubelet
-    ansible.builtin.systemd:
-      name: kubelet
-      state: started
-      enabled: true
-  - name: Persist kernel modules
-    ansible.builtin.lineinfile:
-      dest: /etc/modules-load.d/k8s.conf
-      create: true
-      line: "{{ item }}"
-      owner: "root"
-      mode: '0644'
-    with_items:
-      - overlay
-      - br_netfilter
-  - name: Enable kernel modules
-    community.general.modprobe:
-      name: "{{ item }}"
-      state: present
-    with_items:
-      - overlay
-      - br_netfilter
-  - name: Enable sysctl stuff
-    ansible.posix.sysctl:
-      name: "{{ item }} "
-      value: '1'
-      state: present
-      reload: true
-    with_items:
-      - net.bridge.bridge-nf-call-iptables
-      - net.bridge.bridge-nf-call-ip6tables
-      - net.ipv4.ip_forward
-    notify: System Restart
+    - name: Enable kubelet
+      ansible.builtin.systemd:
+        name: kubelet
+        state: started
+        enabled: true
+    - name: Persist kernel modules
+      ansible.builtin.lineinfile:
+        dest: /etc/modules-load.d/k8s.conf
+        create: true
+        line: "{{ item }}"
+        owner: "root"
+        mode: "0644"
+      with_items:
+        - overlay
+        - br_netfilter
+    - name: Enable kernel modules
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - overlay
+        - br_netfilter
+    - name: Enable sysctl stuff
+      ansible.posix.sysctl:
+        name: "{{ item }} "
+        value: "1"
+        state: present
+        reload: true
+      with_items:
+        - net.bridge.bridge-nf-call-iptables
+        - net.bridge.bridge-nf-call-ip6tables
+        - net.ipv4.ip_forward
+      notify: System Restart
 
   handlers:
     - name: Restart containerd

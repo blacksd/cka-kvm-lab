@@ -5,7 +5,7 @@
   vars:
     just_prepare_stuff: "no"
   tasks:
-    - name: Stat
+    - name: Check if init has been already completed
       ansible.builtin.stat:
         dest: /etc/kubernetes/admin.conf
       ignore_errors: true
@@ -18,7 +18,7 @@
           ansible.builtin.file:
             path: "/tmp/kubeadm-{{ item }}"
             state: directory
-            mode: '0755'
+            mode: "0755"
           # TODO: make these variables
           with_items:
             - patches
@@ -29,7 +29,7 @@
             dest: "{{ item.dest }}"
             owner: "{{ ansible_user }}"
             group: "{{ ansible_user }}"
-            mode: '0644'
+            mode: "0644"
           # TODO: config.yaml should be a jinja2 template
           with_items:
             - src: ./resources/config/config.yml
@@ -57,7 +57,7 @@
           ansible.builtin.file:
             path: "{{ lookup('env', 'HOME') }}/.kube"
             state: directory
-            mode: '0755'
+            mode: "0755"
             owner: "{{ ansible_user }}"
             group: "{{ ansible_user }}"
 
@@ -68,7 +68,7 @@
             src: /etc/kubernetes/admin.conf
             owner: "{{ ansible_user }}"
             group: "{{ ansible_user }}"
-            mode: '0600'
+            mode: "0600"
 
     - name: Save the Admin Kubeconfig locally
       ansible.builtin.fetch:
@@ -109,9 +109,10 @@
             dest: /tmp
             owner: "{{ ansible_user }}"
             group: "{{ ansible_user }}"
-            mode: '0644'
+            mode: "0644"
 
         - name: Install Calico
+          changed_when: not kubectl_apply.stdout_lines | map('regex_findall', '^.*unchanged$)' | first)
           become: false
           ansible.builtin.command:
             cmd: kubectl apply -f /tmp/calico.yaml

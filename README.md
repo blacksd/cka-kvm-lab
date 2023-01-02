@@ -1,54 +1,37 @@
-ansible-galaxy collection install ansible.posix
-ansible-galaxy collection install community.general
+# A CKA lab for kubeadm with KVM/libvirt
 
-kubeadm config images pull
-kubeadm init --ignore-preflight-errors=NumCPU,Mem
+This is an essential, quick&dirty (but complete) local lab to practice some `kubeadm` and `etcdctl` commands. More painful than minikube, but also more fun!
 
-Static pods at /etc/kubernetes/manifests
-[kubelet-start] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
-[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
-/etc/kubernetes/admin.conf
+It has been built on a Fedora 37 + KVM and it's built on top of two components:
 
+- `virt-lightning`, a simple but very effective way of spinning KVM VMs; it's **tons** faster than Vagrant and it has very little requirements; it also has an embedded function to produce an Ansible inventory. Head over to [the `virt-lightning` README](./virt-lightning/README.virt-lightning.mdown) to learn more.
 
-kubeadm join 192.168.123.5:6443  --ignore-preflight-errors=NumCPU,Mem --token kh6as7.cceg8ja94h62f0ai \
-	--discovery-token-ca-cert-hash sha256:456af8849e5d25763216adafccf630c0439a2ef52c7898f6b68eee64941de67b
+- `ansible` to install locally all dependencies and calling `kubeadm` (for both starting and configuring the master and joining the workers). This is executed from the host, and could/should have been put in form of roles. A few of these could/should have been `cloud-init` configs, but I focused on customizing rapidly rather than building efficiently. More on that [in the README in the ansible dir](./ansible/README.ansible.mdown)
 
-curl https://raw.githubusercontent.com/projectcalico/calico/v3.24.5/manifests/calico.yaml -O
+## Running commands
 
+Since I'm lazy and my shell history can only span a few thousand lines, I resorted to a few [Taskfiles](https://taskfile.dev) to call the usual commands:
 
+```zsh
+❯ task
+task: Available tasks for this project:
+* cluster-access:                 Prints an export command to eval. Run "eval `task cluster-access`".
+* cluster-info:                   Test access to the API Server
+* local-setup:                    Install and configure the local workstation
+* redo:                           Tear down and rebuild all lab
+* ansible:playbook-init:          Prepare the OS
+* ansible:playbook-kubeadm:       Bootstrap Kubernetes with kubeadm
+* virt-lightning:create:          Create the lab machines
+* virt-lightning:destroy:         Destroy the whole bunch of machines
+* virt-lightning:start:           Start all VMs
+```
 
-/etc/polkit-1/rules.d/10.virt.rules:
+## Requirements
 
-polkit.addRule(function(action, subject) {
-    if (action.id == "org.libvirt.unix.manage"
-            && subject.local
-            && subject.active
-            && subject.isInGroup("libvirt")) {
-        return polkit.Result.YES;
-    }
-});
+At the very minimum, you'll need:
 
-# sed -i 's/initialDelaySeconds: [0-9]\+/initialDelaySeconds: 180/' /etc/kubernetes/manifests/kube-apiserver.yaml
+- A fairy decent host (16 GB RAM and a quad-core CPU will do)
+- [Taskfiles](https://taskfile.dev) and Kubectl binary in path. If you have `asdf` you can benefit from the local `.tool-versions` file.
+- And of course, `libvirt` and the KVM implementation for your battle station, with a permissive `sudoers`
 
-mkdir /tmp/kustom
-
-cat > /tmp/kustom/kustomization.yaml <<EOF
-patchesJson6902:
-- target:
-    version: v1
-    kind: Pod
-    name: kube-apiserver
-    namespace: kube-system
-  path: patch.yaml
-EOF
-
-cat > /tmp/kustom/kube-apiserver0+json.yaml <<EOF
-- op: replace
-  path: /spec/containers/0/livenessProbe/initialDelaySeconds
-  value: 180
-- op: replace
-  path: /spec/containers/0/livenessProbe/timeoutSeconds
-  value: 30
-EOF
-
-sudo kubeadm init --config config.yaml -k /tmp/kustom
+Everything else can be set up by calling `task local-setup`.

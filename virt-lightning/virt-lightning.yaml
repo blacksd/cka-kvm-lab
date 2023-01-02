@@ -1,21 +1,21 @@
 - name: master01
   distro: centos-9-stream
-  memory: 4096
+  memory: 3072
   root_disk_size: 10
-  vcpus: 3
-  root_password: 'root'
-  groups: ['masters', 'kubernetes']
+  vcpus: 2
+  root_password: "root"
+  groups: ["masters", "kubernetes"]
 - name: worker01
   distro: centos-9-stream
   memory: 2048
   root_disk_size: 10
   vcpus: 2
-  root_password: 'root'
-  groups: ['workers', 'kubernetes']
+  root_password: "root"
+  groups: ["workers", "kubernetes"]
 - name: worker02
   distro: centos-9-stream
   memory: 2048
   root_disk_size: 10
   vcpus: 2
-  root_password: 'root'
-  groups: ['workers', 'kubernetes']
+  root_password: "root"
+  groups: ["workers", "kubernetes"]

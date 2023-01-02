@@ -1,0 +1,5 @@
+# virt-lightning
+
+[`virt-lightning`](https://github.com/virt-lightning/virt-lightning) (`vl` for friends and family) is a neat and lean way of describing a KVM-based lab as code.
+
+The biggest drawback I saw comparing it to a fully-fledged solution (Vagrant or Terraform) was not supporting a complete `cloud-init` structure - this was well compensated by the automated creation of an Ansible static inventory. The goal for this lab was to find the next blocker, kill and rebuild everything as quickly as possible (possibly resuming where we left off).

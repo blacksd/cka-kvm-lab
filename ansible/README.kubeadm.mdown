@@ -1,31 +1,31 @@
 # Kubeadm
 
-Took me some time to figure out but here goes a couple GOTCHAs:
+## Notes
+
+Remember that:
 
 * Static pods are located at `/etc/kubernetes/manifests`
 * Kubelet config is at `/var/lib/kubelet/config.yaml`, the systemd unit file reads the flag in `/var/lib/kubelet/kubeadm-flags.env`
 * At `/etc/kubernetes/admin.conf` there's the adminstrative `KUBECONFIG`. 
 
-You **must** tell that you're using systemd to:
-- The Kubelet, by using a `--patches` or its `InitConfiguration` equivalent (I prefer the latter)
-- Containerd, setting `SystemdCgroup = true` in the relevant section of the `toml` config
+While I install `nerdctl`, you can´t really use it to fetch logs. It's much more useful `crictl` for the same purpose:
 
 - `crictl inspect` will show you pod specs too
 - `crictl logs` will be useful if the apiserver or etcd are unreachable
 
-TODO: add these:
+## Set systemd as cgroups manager
 
-ETCD_VER=v3.3.8
+Took me some time to figure out what blocked me for a couple of days; you **must** tell that you're using `systemd` to manage `cgroups` to:
 
-# choose either URL
-GOOGLE_URL=https://storage.googleapis.com/etcd
-GITHUB_URL=https://github.com/coreos/etcd/releases/download
-DOWNLOAD_URL=${GOOGLE_URL}
+- The Kubelet, by using a `--patches` or its `InitConfiguration` equivalent (I prefer the latter)
+- Containerd, setting `SystemdCgroup = true` in the relevant section of the `toml` config
 
-rm -f /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz
-rm -rf /tmp/test-etcd && mkdir -p /tmp/test-etcd
+Both of these changes have been backported in Ansible for reference.
 
-curl -L ${DOWNLOAD_URL}/${ETCD_VER}/etcd-${ETCD_VER}-linux-amd64.tar.gz -o /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz
-tar xzvf /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz -C /tmp/test-etcd --strip-components=1
+## etcdctl
 
-sudo mkdir -p /usr/local/bin/ && sudo cp /tmp/test-etcd/etcd* /usr/local/bin/
+Remember to 
+- put in your `ETCDCTL_API=3` 
+- that a snapshot `restore` happens only with cluster stopped (check your permissions after)
+
+HA is a pain.

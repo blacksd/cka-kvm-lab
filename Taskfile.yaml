@@ -1,9 +1,9 @@
 # https://taskfile.dev
 
-version: '3'
+version: "3"
 
 includes:
-  ansible: 
+  ansible:
     dir: ./ansible
     taskfile: ./ansible/Taskfile.yaml
   virt-lightning:
@@ -15,18 +15,31 @@ tasks:
     cmds:
       - task -l
     silent: true
-  
+
+  local-setup:
+    desc: Install and configure the local workstation
+    cmds:
+      - pip install --requirement requirements.txt
+      - ansible-playbook ./ansible/playbook-local-setup.yaml
+
   redo:
     desc: "Tear down and rebuild all lab"
     cmds:
-    - task: virt-lightning:destroy
-    - task: virt-lightning:create
-    - task: ansible:playbook-init
+      - task: virt-lightning:destroy
+      - task: virt-lightning:create
+      - task: ansible:playbook-init
+      - task: ansible:playbook-kubeadm
 
   cluster-info:
     desc: Test access to the API Server
     env:
       KUBECONFIG:
-        sh: echo $PWD/ansible/resources/.kube/config
+        sh: echo ${PWD}/ansible/resources/.kube/config
     cmds:
-    - kubectl cluster-info
+      - kubectl cluster-info
+
+  cluster-access:
+    desc: Prints an export command to eval. Run "eval `task {{ .TASK }}`".
+    silent: true
+    cmds:
+      - echo "unset KUBECONFIG; export KUBECONFIG=${PWD}/ansible/resources/.kube/config"

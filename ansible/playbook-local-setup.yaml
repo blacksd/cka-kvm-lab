@@ -1,0 +1,44 @@
+---
+- name: Set some local prerequisites
+  hosts: localhost
+
+  tasks:
+    - name: Install Ansible Galaxy community.general
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install community.general
+      changed_when: not install_community_general.stdout_lines | map('regex_findall', '^Nothing to do\..*$)' | first)
+      register: install_community_general
+
+    - name: Install all Ansible Galaxy modules
+      community.general.ansible_galaxy_install:
+        name: "{{ item }}"
+        type: collection
+      with_items:
+        - ansible.posix
+
+    - name: Add a policykit rule to allow libvirt
+      become: true
+      ansible.builtin.blockinfile:
+        block: |
+          polkit.addRule(function(action, subject) {
+              if (action.id == "org.libvirt.unix.manage"
+                      && subject.local
+                      && subject.active
+                      && subject.isInGroup("libvirt")) {
+                  return polkit.Result.YES;
+              }
+          });
+        create: true
+        owner: root
+        group: root
+        mode: "0644"
+        dest: /etc/polkit-1/rules.d/10-virt.rules
+        marker: "// {mark} Ansible Managed Block"
+
+    - name: Install virt-lightning
+      ansible.builtin.pip:
+        name:
+          - virt-lightning
+          - libvirt-python
+          - urwid
+        state: present

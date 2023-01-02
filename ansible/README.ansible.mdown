@@ -1,2 +1,5 @@
-ansible-galaxy collection install ansible.posix
-ansible-galaxy collection install community.general
+# Ansible
+
+Not much to say about the Ansible implementation; I tried to use native modules where possible, and call `command` everywhere else. Versions are pinned as `vars`.
+
+The inventory file is statically generated from `virt-lighting`.

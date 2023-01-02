@@ -8,10 +8,18 @@ plugins:
       uri: https://github.com/trunk-io/plugins
 lint:
   enabled:
+    - ansible-lint@5.3.2
     - prettier@2.8.1
     - markdownlint@0.32.2
     - git-diff-check
     - gitleaks@8.15.2
+  triggers:
+    - linters:
+        - ansible-lint
+      paths:
+        - ansible # A directory
+      targets:
+        - ansible # A directory
 runtimes:
   enabled:
     - go@1.18.3
