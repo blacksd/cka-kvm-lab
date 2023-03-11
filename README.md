@@ -30,7 +30,7 @@ task: Available tasks for this project:
 
 At the very minimum, you'll need:
 
-- A fairy decent host (16 GB RAM and a quad-core CPU will do)
+- A fairly decent host (16 GB RAM and a quad-core CPU will do)
 - [Taskfiles](https://taskfile.dev) and Kubectl binary in path. If you have `asdf` you can benefit from the local `.tool-versions` file.
 - And of course, `libvirt` and the KVM implementation for your battle station, with a permissive `sudoers`
 
